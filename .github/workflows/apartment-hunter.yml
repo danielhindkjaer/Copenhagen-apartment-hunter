@@ -1,13 +1,10 @@
 name: Copenhagen Apartment Hunter
-
 on:
   workflow_dispatch:
   schedule:
     - cron: "*/10 * * * *"
-
 permissions:
   contents: write
-
 jobs:
   hunt:
     runs-on: ubuntu-latest
