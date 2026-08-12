@@ -1,50 +1,53 @@
-import re,requests
+import re
+from urllib.parse import urljoin,urlparse
+import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-from config import REQUEST_TIMEOUT,MAX_LISTINGS_PER_SOURCE
+from config import REQUEST_TIMEOUT,MAX_LISTINGS_PER_SOURCE,ALLOWED_DOMAINS
 from models import Listing
-HEADERS={"User-Agent":"Mozilla/5.0 CopenhagenApartmentHunter/1.0"}
-SOURCES={
-"BoligPortal":"https://www.boligportal.dk/lejeboliger/koebenhavn/",
-"Heimstaden":"https://www.heimstaden.dk/","Balder":"https://www.balder.dk/",
-"Lejebolig.dk":"https://www.lejebolig.dk/lejeboliger/koebenhavn",
-"Lejeboligportal.dk":"https://www.lejeboligportal.dk/","Bolig.dk":"https://www.bolig.dk/",
-"City Apartment":"https://cityapartment.dk/","Taurus":"https://www.taurus.dk/",
-"Newsec":"https://bolig.newsec.dk/","CEJ":"https://udlejning.cej.dk/",
-"Juli Living":"https://juliliving.dk/","Findbolig":"https://findbolig.nu/",
-"Housing Denmark":"https://housingdenmark.com/","AkutBolig":"https://www.akutbolig.dk/",
-"Kereby":"https://kereby.dk/bolig/","Grønttorvet":"https://groenttorvet.dk/"}
-def clean(t):return " ".join(t.replace("\xa0"," ").split())
+HEADERS={"User-Agent":"Mozilla/5.0 CopenhagenApartmentHunter/2.0"}
+SOURCES={"BoligPortal":"https://www.boligportal.dk/lejeboliger/koebenhavn/","Heimstaden":"https://www.heimstaden.dk/","Balder":"https://www.balder.dk/","Lejebolig.dk":"https://www.lejebolig.dk/lejeboliger/koebenhavn","Lejeboligportal.dk":"https://www.lejeboligportal.dk/","Bolig.dk":"https://www.bolig.dk/","City Apartment":"https://cityapartment.dk/","Taurus":"https://www.taurus.dk/","Newsec":"https://bolig.newsec.dk/","CEJ":"https://udlejning.cej.dk/","Juli Living":"https://juliliving.dk/","Findbolig":"https://findbolig.nu/","Housing Denmark":"https://housingdenmark.com/","AkutBolig":"https://www.akutbolig.dk/","Kereby":"https://kereby.dk/bolig/","Grønttorvet":"https://groenttorvet.dk/"}
+def clean(t): return " ".join((t or "").replace("\xa0"," ").split())
 def price(t):
-    for p in [r"(\d[\d\.\s]*)\s*(?:kr\.?|dkk)",r"(?:rent|husleje)\s*[:\-]?\s*(\d[\d\.\s]*)"]:
+    for p in [r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(?:kr\.?|dkk)\b",r"(?:husleje|leje|rent)\s*[:\-]?\s*(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})"]:
         m=re.search(p,t,re.I)
         if m:
-            try:return int(m.group(1).replace(" ","").replace(".","").replace(",",""))
-            except:pass
+            try:
+                v=int(m.group(1).replace(" ","").replace(".","").replace(",",""))
+                if 2000<=v<=100000:return v
+            except ValueError: pass
     return None
 def size(t):
-    m=re.search(r"(\d+(?:[.,]\d+)?)\s*m²",t,re.I); return float(m.group(1).replace(",",".")) if m else None
+    m=re.search(r"(\d+(?:[.,]\d+)?)\s*m(?:²|2)\b",t,re.I)
+    return float(m.group(1).replace(",",".")) if m else None
 def rooms(t):
-    m=re.search(r"(\d+(?:[.,]\d+)?)\s*(?:værelser|vær\.?|rooms?|rum)",t,re.I); return float(m.group(1).replace(",",".")) if m else None
-def availability(t):
-    m=re.search(r"(?:overtagelsesdato|available from|move[- ]?in|indflytning)\s*[:\-]?\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",t,re.I); return m.group(1) if m else ""
+    m=re.search(r"(\d+(?:[.,]\d+)?)\s*(?:værelser|vær\.?|rooms?|rum)\b",t,re.I)
+    return float(m.group(1).replace(",",".")) if m else None
+def available(t):
+    m=re.search(r"(?:overtagelsesdato|indflytning|available from|move[- ]?in)\s*[:\-]?\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4})",t,re.I)
+    return clean(m.group(1)) if m else ""
+def allowed(url):
+    try:
+        h=urlparse(url).netloc.lower().split(":")[0]
+        return any(h==d or h.endswith("."+d) for d in ALLOWED_DOMAINS)
+    except: return False
 def scrape_source(source,start_url):
-    q=requests.get(start_url,headers=HEADERS,timeout=REQUEST_TIMEOUT,allow_redirects=True);q.raise_for_status()
-    soup=BeautifulSoup(q.text,"html.parser");out=[];seen=set()
-    terms=["lejlighed","lejebolig","bolig","apartment","rental","rent","værelse","room","m²","kr","dkk"]
+    r=requests.get(start_url,headers=HEADERS,timeout=REQUEST_TIMEOUT); r.raise_for_status()
+    soup=BeautifulSoup(r.text,"html.parser"); out=[]; seen=set()
     for a in soup.find_all("a",href=True):
-        href=urljoin(q.url,a["href"]);title=clean(a.get_text(" ",strip=True))
-        if not title or href in seen:continue
-        parent=clean(a.parent.get_text(" ",strip=True)) if a.parent else "";blob=clean(title+" "+parent)
-        if not any(t in blob.lower() for t in terms):continue
-        if any(t in title.lower() for t in ["log ind","login","kontakt","contact","opret bruger","sign up","privacy","cookie"]):continue
-        seen.add(href);out.append(Listing(title[:200],href,source,price(blob),size(blob),rooms(blob),blob[:400],availability(blob),blob[:1500]))
-        if len(out)>=MAX_LISTINGS_PER_SOURCE:break
+        href=urljoin(r.url,a["href"]); title=clean(a.get_text(" ",strip=True))
+        if not title or href in seen or not allowed(href): continue
+        parent=clean(a.parent.get_text(" ",strip=True)) if a.parent else ""; blob=clean(title+" "+parent)
+        if any(x in title.lower() for x in ["log ind","login","kontakt","contact","cookie","privacy","terms","om os","about"]): continue
+        if not any(w in blob.lower() for w in ["lejlighed","lejebolig","bolig","apartment","rental","værelser","rooms","m²","m2"]): continue
+        p,s,rm=price(blob),size(blob),rooms(blob)
+        if p is None or s is None or rm is None: continue
+        seen.add(href); out.append(Listing(title[:200],href,source,p,s,rm,blob[:500],available(blob),blob[:1800]))
+        if len(out)>=MAX_LISTINGS_PER_SOURCE: break
     return out
 def scrape_all():
     all_items=[]
     for source,url in SOURCES.items():
         try:
-            items=scrape_source(source,url);print(f"[OK] {source}: {len(items)} candidates");all_items+=items
-        except Exception as e:print(f"[WARN] {source}: {type(e).__name__}: {e}")
-    unique={x.key:x for x in all_items};print(f"[SUMMARY] {len(all_items)} candidates -> {len(unique)} unique URLs");return list(unique.values())
+            items=scrape_source(source,url); print(f"[OK] {source}: {len(items)} usable candidates"); all_items+=items
+        except Exception as e: print(f"[WARN] {source}: {type(e).__name__}: {e}")
+    unique={x.key:x for x in all_items}; print(f"[SUMMARY] {len(all_items)} usable candidates -> {len(unique)} unique URLs"); return list(unique.values())

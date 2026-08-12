@@ -1,13 +1,14 @@
-# Copenhagen Apartment Hunter — Kereby + Grønttorvet
+# Copenhagen Apartment Hunter v2 — Strict
 
-Search: max 13,000 DKK/month, no minimum size, whole apartment/couple focus, requested Copenhagen areas, move-in Nov/Dec 2026.
+Max 13,000 DKK/month; minimum 35 m²; minimum 1 room.
+Copenhagen target areas only. Kereby and Grønttorvet included.
 
-Sources: BoligPortal, Heimstaden, Balder, Lejebolig.dk, Lejeboligportal.dk, Bolig.dk, City Apartment, Taurus, Newsec, CEJ, Juli Living, Findbolig, Housing Denmark, AkutBolig, Kereby and Grønttorvet.
+Safety:
+- No alert without price, m² and room count.
+- Copenhagen target-area match required.
+- Explicit non-Copenhagen cities are excluded.
+- Only monitored rental domains can be sent.
+- Rooms/shared accommodation are excluded.
 
-IMPORTANT: Keep the existing data/seen.json from your CURRENT working GitHub repository. Do not replace it with this ZIP's empty data/seen.json, or the bot may treat existing listings as new.
-
-NEW logic: a URL already in seen.json never triggers again. A new URL is filtered and, if it matches, sent to Telegram; then it is stored.
-
-Some sites are JavaScript-heavy, so the generic scraper may return zero candidates even when listings exist. This version adds Kereby and Grønttorvet to the source list; dedicated adapters can be added later if needed.
-
-Secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+IMPORTANT: Preserve the existing `data/seen.json` from the working repository.
+Do not replace it with the empty file in this ZIP.
